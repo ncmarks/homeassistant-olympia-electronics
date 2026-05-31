@@ -2,23 +2,24 @@
 import logging
 
 from homeassistant.components.switch import SwitchEntity
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import DOMAIN
+from .coordinator import OlympiaConfigEntry
 from .entity import OlympiaBaseEntity, device_has_field
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: OlympiaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Olympia Electronics switches from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     entities = [
         OlympiaBoilerSwitch(

@@ -2,12 +2,11 @@
 import logging
 from typing import Final
 
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
-from homeassistant.helpers.update_coordinator import UpdateFailed
+
+from .coordinator import OlympiaConfigEntry, OlympiaElectronicsCoordinator
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
@@ -26,43 +25,21 @@ DEFAULT_PRECISION = 0.1
 PLATFORMS = [Platform.CLIMATE, Platform.BINARY_SENSOR, Platform.SWITCH]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: OlympiaConfigEntry) -> bool:
     """Set up Olympia Electronics from a config entry."""
-    from .coordinator import OlympiaElectronicsCoordinator
-
     coordinator = OlympiaElectronicsCoordinator(
         hass,
         entry.data[CONF_EMAIL],
         entry.data[CONF_PASSWORD],
         config_entry=entry,
     )
-
-    try:
-        await coordinator.async_validate_credentials()
-    except UpdateFailed as err:
-        msg = str(err)
-        if "Login" in msg or "401" in msg:
-            raise ConfigEntryAuthFailed(err) from err
-        raise ConfigEntryNotReady(err) from err
-
     await coordinator.async_config_entry_first_refresh()
-
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    entry.runtime_data = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
 
 
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the entry when its options change so entities pick up new values."""
-    await hass.config_entries.async_reload(entry.entry_id)
-
-
-async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: OlympiaConfigEntry) -> bool:
     """Unload a config entry."""
-    unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
-    return unload_ok
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)

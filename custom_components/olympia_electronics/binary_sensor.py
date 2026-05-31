@@ -4,21 +4,22 @@ from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
     BinarySensorEntity,
 )
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import DOMAIN
+from .coordinator import OlympiaConfigEntry
 from .entity import OlympiaBaseEntity, device_has_field
+
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: OlympiaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Olympia Electronics binary sensors from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     entities = [
         OlympiaBurnerSensor(

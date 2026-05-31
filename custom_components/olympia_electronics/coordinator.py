@@ -1,12 +1,16 @@
 """Data coordinator for Olympia Electronics thermostats."""
+import asyncio
+import base64
+import json
 import logging
 import time
 from datetime import timedelta
 from typing import Any, Optional
 
-from aiohttp import ClientTimeout
+from aiohttp import ClientError, ClientTimeout
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import ConfigEntryAuthFailed, HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -16,6 +20,59 @@ OLYMPIA_API_URL = "https://iot-api.olympia-electronics.gr/v1"
 UPDATE_INTERVAL = 30
 REQUEST_TIMEOUT = ClientTimeout(total=10)
 TOKEN_REFRESH_BUFFER = 120
+
+
+class CannotConnect(HomeAssistantError):
+    """Error to indicate we cannot reach the Olympia Electronics cloud."""
+
+
+class InvalidAuth(HomeAssistantError):
+    """Error to indicate the credentials were rejected."""
+
+
+def _parse_jwt_exp(token: str) -> Optional[float]:
+    """Return the JWT ``exp`` claim by decoding the payload segment."""
+    try:
+        payload_b64 = token.split(".")[1]
+        padding = "=" * (4 - len(payload_b64) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64 + padding))
+        return float(payload["exp"])
+    except Exception as err:
+        _LOGGER.warning("Could not read token expiry: %s", err)
+        return None
+
+
+async def async_login(session, email: str, password: str) -> tuple[str, Optional[float]]:
+    """Log in to the Olympia cloud and return ``(jwt_token, expiry_epoch)``.
+
+    Raises ``InvalidAuth`` for rejected credentials and ``CannotConnect`` for
+    transport errors or unexpected responses. Used both by the config flow
+    (standalone, no coordinator) and by the coordinator's token refresh.
+    """
+    try:
+        async with session.post(
+            f"{OLYMPIA_API_URL}/users/login/",
+            json={"email": email, "password": password},
+            timeout=REQUEST_TIMEOUT,
+        ) as resp:
+            body = await resp.text()
+            if resp.status in (400, 401, 403):
+                raise InvalidAuth(f"Login rejected: {resp.status}")
+            if resp.status != 200:
+                raise CannotConnect(f"Login failed: {resp.status} - {body}")
+            try:
+                data = await resp.json()
+            except Exception as err:
+                raise CannotConnect(f"Login response was not valid JSON: {body}") from err
+    except (ClientError, asyncio.TimeoutError) as err:
+        raise CannotConnect(f"Connection error during login: {err}") from err
+
+    if data.get("non_field_errors"):
+        raise InvalidAuth(f"Login error: {data['non_field_errors']}")
+    token = data.get("token")
+    if not token:
+        raise InvalidAuth("Login response did not contain a token")
+    return token, _parse_jwt_exp(token)
 
 
 class OlympiaElectronicsCoordinator(DataUpdateCoordinator):
@@ -35,12 +92,6 @@ class OlympiaElectronicsCoordinator(DataUpdateCoordinator):
         self._session = None
         self._auth_token: Optional[str] = None
         self._token_expires_at: Optional[float] = None
-
-    async def async_validate_credentials(self) -> None:
-        """Log in once so setup fails clearly on bad credentials."""
-        await self._refresh_token()
-        if not self._auth_token:
-            raise UpdateFailed("Authentication failed: no token returned")
 
     async def async_send_update(
         self,
@@ -139,8 +190,14 @@ class OlympiaElectronicsCoordinator(DataUpdateCoordinator):
                 )
             _LOGGER.debug("Fetched %d Olympia thermostat(s)", len(thermostats))
             return thermostats
+        except ConfigEntryAuthFailed:
+            raise
+        except InvalidAuth as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except UpdateFailed:
             raise
+        except CannotConnect as err:
+            raise UpdateFailed(str(err)) from err
         except Exception as err:
             raise UpdateFailed(f"Error fetching data: {err}") from err
 
@@ -183,42 +240,10 @@ class OlympiaElectronicsCoordinator(DataUpdateCoordinator):
     async def _refresh_token(self) -> None:
         """Log in and store a fresh JWT (plus its expiry)."""
         session = self._session or async_get_clientsession(self.hass)
-        try:
-            async with session.post(
-                f"{OLYMPIA_API_URL}/users/login/",
-                json={"email": self._email, "password": self._password},
-                timeout=REQUEST_TIMEOUT,
-            ) as resp:
-                body = await resp.text()
-                if resp.status != 200:
-                    raise UpdateFailed(f"Login failed: {resp.status} - {body}")
-                try:
-                    data = await resp.json()
-                except Exception:
-                    raise UpdateFailed(f"Login response invalid JSON: {body}")
-                if data.get("non_field_errors"):
-                    raise UpdateFailed(f"Login error: {data['non_field_errors']}")
-                self._auth_token = data.get("token")
-                if not self._auth_token:
-                    raise UpdateFailed(f"Login missing token: {data}")
-                self._token_expires_at = self._parse_jwt_exp(self._auth_token)
-                _LOGGER.debug("Token refreshed successfully")
-        except UpdateFailed:
-            raise
-        except Exception as err:
-            raise UpdateFailed(f"Token refresh failed: {err}") from err
+        self._auth_token, self._token_expires_at = await async_login(
+            session, self._email, self._password
+        )
+        _LOGGER.debug("Token refreshed successfully")
 
-    @staticmethod
-    def _parse_jwt_exp(token: str) -> Optional[float]:
-        """Return the JWT ``exp`` claim by decoding the payload segment."""
-        import base64
-        import json
 
-        try:
-            payload_b64 = token.split(".")[1]
-            padding = "=" * (4 - len(payload_b64) % 4)
-            payload = json.loads(base64.urlsafe_b64decode(payload_b64 + padding))
-            return float(payload["exp"])
-        except Exception as err:
-            _LOGGER.warning("Could not read token expiry: %s", err)
-            return None
+OlympiaConfigEntry = ConfigEntry[OlympiaElectronicsCoordinator]

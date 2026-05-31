@@ -5,12 +5,12 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
 from homeassistant.core import callback
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
     NumberSelector,
     NumberSelectorConfig,
     NumberSelectorMode,
 )
-from homeassistant.helpers.update_coordinator import UpdateFailed
 
 from . import (
     CONF_MAX_TEMP,
@@ -21,7 +21,7 @@ from . import (
     DEFAULT_PRECISION,
     DOMAIN,
 )
-from .coordinator import OlympiaElectronicsCoordinator
+from .coordinator import CannotConnect, InvalidAuth, async_login
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +44,22 @@ class OlympiaElectronicsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Return the options flow handler."""
         return OlympiaElectronicsOptionsFlow()
 
+    async def _validate(self, user_input) -> dict:
+        """Validate credentials with a standalone login; return an errors dict."""
+        session = async_get_clientsession(self.hass)
+        try:
+            await async_login(
+                session, user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
+            )
+        except InvalidAuth:
+            return {"base": "invalid_auth"}
+        except CannotConnect:
+            return {"base": "cannot_connect"}
+        except Exception:
+            _LOGGER.exception("Unexpected error validating Olympia Electronics credentials")
+            return {"base": "unknown"}
+        return {}
+
     async def async_step_user(self, user_input=None):
         """Handle the initial setup step."""
         errors = {}
@@ -51,24 +67,8 @@ class OlympiaElectronicsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             await self.async_set_unique_id(user_input[CONF_EMAIL].lower())
             self._abort_if_unique_id_configured()
-
-            coordinator = OlympiaElectronicsCoordinator(
-                self.hass,
-                user_input[CONF_EMAIL],
-                user_input[CONF_PASSWORD],
-            )
-            try:
-                await coordinator.async_validate_credentials()
-            except UpdateFailed as err:
-                msg = str(err)
-                if "Login" in msg or "401" in msg:
-                    errors["base"] = "invalid_auth"
-                else:
-                    errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected error during Olympia Electronics setup")
-                errors["base"] = "unknown"
-            else:
+            errors = await self._validate(user_input)
+            if not errors:
                 return self.async_create_entry(
                     title=user_input[CONF_EMAIL],
                     data=user_input,
@@ -89,23 +89,8 @@ class OlympiaElectronicsConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors = {}
 
         if user_input is not None:
-            coordinator = OlympiaElectronicsCoordinator(
-                self.hass,
-                user_input[CONF_EMAIL],
-                user_input[CONF_PASSWORD],
-            )
-            try:
-                await coordinator.async_validate_credentials()
-            except UpdateFailed as err:
-                msg = str(err)
-                if "Login" in msg or "401" in msg:
-                    errors["base"] = "invalid_auth"
-                else:
-                    errors["base"] = "cannot_connect"
-            except Exception:
-                _LOGGER.exception("Unexpected error during Olympia Electronics reauth")
-                errors["base"] = "unknown"
-            else:
+            errors = await self._validate(user_input)
+            if not errors:
                 await self.async_set_unique_id(user_input[CONF_EMAIL].lower())
                 self._abort_if_unique_id_mismatch(reason="account_mismatch")
                 return self.async_update_reload_and_abort(
@@ -136,12 +121,12 @@ def _temp_selector() -> NumberSelector:
     )
 
 
-class OlympiaElectronicsOptionsFlow(config_entries.OptionsFlow):
+class OlympiaElectronicsOptionsFlow(config_entries.OptionsFlowWithReload):
     """Handle the options flow for Olympia Electronics.
 
     Lets the user tune the temperature range and step used by the climate
-    entities. ``config_entry`` is provided by the base class as a property,
-    so it must not be assigned here.
+    entities. ``OptionsFlowWithReload`` reloads the entry automatically when
+    the options change, so entities pick up the new values.
     """
 
     async def async_step_init(self, user_input=None):

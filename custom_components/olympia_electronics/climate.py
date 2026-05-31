@@ -4,7 +4,6 @@ from typing import Any
 
 from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.climate.const import (HVACMode, ClimateEntityFeature, HVACAction)
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature, ATTR_TEMPERATURE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -16,22 +15,23 @@ from . import (
     DEFAULT_MAX_TEMP,
     DEFAULT_MIN_TEMP,
     DEFAULT_PRECISION,
-    DOMAIN,
 )
-from .coordinator import OlympiaElectronicsCoordinator
+from .coordinator import OlympiaConfigEntry, OlympiaElectronicsCoordinator
 from .entity import OlympiaBaseEntity
 
 
 _LOGGER = logging.getLogger(__name__)
 
+PARALLEL_UPDATES = 1
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: ConfigEntry,
+    entry: OlympiaConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the Olympia Electronics climate platform from a config entry."""
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+    coordinator = entry.runtime_data
 
     entities = [
         OlympiaClimateEntity(

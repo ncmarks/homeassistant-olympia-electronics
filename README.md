@@ -115,7 +115,7 @@ credentials — no need to delete and re-add it.
 
 ## Requirements
 
-- Home Assistant **2024.12** or newer
+- Home Assistant **2025.8** or newer
 - No external Python dependencies
 
 ## Troubleshooting
