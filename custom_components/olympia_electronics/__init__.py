@@ -6,12 +6,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
 
 DOMAIN: Final = "olympia_electronics"
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 CONF_MIN_TEMP = "min_temp"
 CONF_MAX_TEMP = "max_temp"
