@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Olympia Electronics",
+        "description": "Enter your Olympia Electronics account credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-authenticate Olympia Electronics",
+        "description": "Your credentials have expired. Please re-enter them.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the Olympia Electronics cloud. Check your network and try again.",
+      "invalid_auth": "Invalid email or password.",
+      "unknown": "An unexpected error occurred. Please try again."
+    },
+    "abort": {
+      "already_configured": "This account is already configured.",
+      "reauth_successful": "Re-authentication was successful.",
+      "account_mismatch": "Those credentials are for a different Olympia Electronics account than the one being re-authenticated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Olympia Electronics options",
+        "description": "Adjust the temperature range and step used by your thermostats.",
+        "data": {
+          "min_temp": "Minimum temperature (°C)",
+          "max_temp": "Maximum temperature (°C)",
+          "precision": "Temperature step (°C)"
+        }
+      }
+    },
+    "error": {
+      "min_max": "The minimum temperature must be lower than the maximum temperature."
+    }
+  }
+}

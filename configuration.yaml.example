@@ -1,0 +1,19 @@
+# Example configuration.yaml entry for the Olympia Electronics integration.
+# Copy this into your Home Assistant configuration.yaml and fill in your
+# Olympia Electronics account credentials.
+
+olympia_electronics:
+  email: your.email@example.com
+  password: your_password
+  # Optional configuration:
+  min_temp: 10        # Minimum allowed temperature (default: 10)
+  max_temp: 30        # Maximum allowed temperature (default: 30)
+  precision: 0.1      # Temperature precision (options: 0.1, 0.5, 1)
+
+# Optional: nicer names for your thermostats
+homeassistant:
+  customize:
+    climate.bedroom_thermostat:
+      friendly_name: "Bedroom Thermostat"
+    climate.living_room_thermostat:
+      friendly_name: "Living Room Thermostat"

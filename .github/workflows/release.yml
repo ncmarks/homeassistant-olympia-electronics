@@ -1,0 +1,42 @@
+name: Release
+
+# Creates a GitHub release automatically whenever the version in
+# custom_components/olympia_electronics/manifest.json does not yet have a
+# matching release. Bump the "version" field, push to main, and a release
+# (tag vX.Y.Z) is published on its own. HACS then offers it as an update.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write  # required for creating tags/releases
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Read version from manifest
+        id: version
+        run: |
+          version="$(jq -r '.version' custom_components/olympia_electronics/manifest.json)"
+          if [ -z "$version" ] || [ "$version" = "null" ]; then
+            echo "::error::No version found in manifest.json"
+            exit 1
+          fi
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create release if it does not exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tag="${{ steps.version.outputs.tag }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag already exists - nothing to do."
+          else
+            echo "Creating release $tag"
+            gh release create "$tag" --title "$tag" --generate-notes
+          fi
