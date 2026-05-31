@@ -4,9 +4,9 @@ from typing import Final
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import config_validation as cv, entity_registry as er
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.update_coordinator import UpdateFailed
 
 _LOGGER: logging.Logger = logging.getLogger(__name__)
@@ -51,26 +51,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    await er.async_migrate_entries(hass, entry.entry_id, _migrate_unique_id)
-
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
-
-
-@callback
-def _migrate_unique_id(entity_entry: er.RegistryEntry) -> dict | None:
-    """Migrate legacy entity unique_ids to the unified {device_id}_{key} scheme."""
-    unique_id = entity_entry.unique_id
-
-    if entity_entry.domain == "climate" and unique_id.startswith("olympia_electronics_"):
-        device_id = unique_id[len("olympia_electronics_"):]
-        return {"new_unique_id": f"{device_id}_climate"}
-
-    if entity_entry.domain == "switch" and unique_id.endswith("_boiler_switch"):
-        device_id = unique_id[: -len("_boiler_switch")]
-        return {"new_unique_id": f"{device_id}_boiler"}
-
-    return None
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
